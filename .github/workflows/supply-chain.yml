@@ -1,0 +1,56 @@
+name: Supply chain
+
+# Secret-scanning baseline for AxiNine/.github — blueprint §8.5 (OWASP A03).
+#
+# The org-defaults repo: profile README, issue and PR templates, and the starter workflows every new
+# AxiNine repository copies. Its blast radius is the whole organisation — a workflow template with a
+# credential in it is nine repositories away from being nine leaks.
+#
+# Every repository in the org runs this same job. A secret-scanning policy with an exception list is a
+# secret-scanning policy that gets tested by the exception.
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+
+jobs:
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # gitleaks walks commits, not the working tree. A credential deleted in a later commit is still
+          # in the repository, and is still valid until somebody rotates it.
+          fetch-depth: 0
+
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" \
+            detect --source=/repo --redact --no-banner --exit-code=1 \
+            --report-format=sarif --report-path=/repo/gitleaks.sarif
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitleaks-sarif
+          path: gitleaks.sarif
+          retention-days: 14
