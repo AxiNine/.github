@@ -1,0 +1,70 @@
+name: Supply chain
+
+# AxiNine starter workflow — the minimum every repository in the org runs (blueprint §8.5, OWASP A03/A08).
+#
+# Copy this into a new repository from the Actions tab, then add the ecosystem-specific gates on top:
+#
+#   .NET        →  restore with `--locked-mode` + NuGet advisory audit as an error in CI
+#                  (see AxiNine/backend: Directory.Build.props, nuget.config, .github/workflows/ci.yml)
+#   npm         →  `npm ci --ignore-scripts` + `npm audit --audit-level=high`
+#                  (see AxiNine/contracts — the smallest complete example)
+#   Python      →  hash-pinned requirements (`pip install --require-hashes`) + `pip-audit`
+#   containers  →  every image reference pinned as `tag@sha256:...`
+#                  (see AxiNine/infra: the `image-pinning` job)
+#
+# Two rules that are not negotiable in this org, both learned the boring way:
+#
+#   1. **Pin actions to a commit SHA, not a tag.** A tag is a pointer the author can move; `@v4` is a
+#      standing invitation to run whatever they push next. Dependabot understands the
+#      `uses: owner/action@<sha> # vX.Y.Z` convention and keeps both parts current.
+#   2. **Never `continue-on-error` a gate.** A check that reports success while doing nothing is worse
+#      than no check, because the dashboard now argues against the person who suspects something is
+#      wrong. If a gate cannot be met, delete it and write the gap down in §8.5.
+
+on:
+  pull_request:
+  push:
+    branches: [$default-branch]
+  schedule:
+    - cron: '0 4 * * *' # 11:00 Asia/Bangkok — pick a slot no other repo uses.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+
+jobs:
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # gitleaks walks commits, not the working tree. A credential removed in a later commit is still
+          # in the repository — and still valid until somebody rotates it.
+          fetch-depth: 0
+
+      - name: gitleaks
+        # `--redact` keeps the matched value out of the log, so a build log does not become the second
+        # place the credential lives.
+        run: |
+          docker run --rm -v "$PWD:/repo" "$GITLEAKS_IMAGE" \
+            detect --source=/repo --redact --no-banner --exit-code=1 \
+            --report-format=sarif --report-path=/repo/gitleaks.sarif
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitleaks-sarif
+          path: gitleaks.sarif
+          retention-days: 14

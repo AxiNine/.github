@@ -1,0 +1,9 @@
+{
+  "name": "AxiNine supply-chain baseline",
+  "description": "Secret scanning over full git history, on PRs, pushes and nightly. The minimum every AxiNine repository runs (docs §8.5 — OWASP A03/A08). Add the ecosystem gates on top; see the comments in the file.",
+  "iconName": "octicon shield-lock",
+  "categories": [
+    "Security",
+    "Code Scanning"
+  ]
+}

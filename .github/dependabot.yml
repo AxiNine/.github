@@ -1,0 +1,21 @@
+# Dependabot for AxiNine/.github (blueprint §8.5, OWASP A03).
+
+# Templates and org defaults only — no package manifests.
+
+version: 2
+
+updates:
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '04:00'
+      timezone: Asia/Bangkok
+    groups:
+      actions:
+        patterns: ['*']
+    labels:
+      - dependencies
+      - supply-chain
